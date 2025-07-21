@@ -11,14 +11,16 @@ import {
   TouchableOpacity
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { CheckCircle, Plus, Settings } from 'lucide-react-native';
+import { CheckCircle, Plus, Settings, Menu, Tag as TagIcon } from 'lucide-react-native';
 import blink from '@/lib/blink';
 import VoiceRecorder from '@/components/VoiceRecorder';
 import TaskItem from '@/components/TaskItem';
 import TextInput from '@/components/TextInput';
 import InputToggle, { InputMode } from '@/components/InputToggle';
-import ThemeToggle from '@/components/ThemeToggle';
 import TaskStats from '@/components/TaskStats';
+import Sidebar, { FilterType } from '@/components/Sidebar';
+import TagManager from '@/components/TagManager';
+import SettingsPanel from '@/components/SettingsPanel';
 import { useTheme } from '@/contexts/ThemeContext';
 
 interface Task {
@@ -33,16 +35,19 @@ interface Task {
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [filteredTasks, setFilteredTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [inputMode, setInputMode] = useState<InputMode>('voice');
+  const [showSidebar, setShowSidebar] = useState(false);
+  const [showTagManager, setShowTagManager] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [currentFilter, setCurrentFilter] = useState<FilterType>('all');
   const { colors, isDark } = useTheme();
 
   // Animation for new task creation
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
-  const slideAnim = React.useRef(new Animated.Value(-100)).current;
 
   useEffect(() => {
     const unsubscribe = blink.auth.onAuthStateChanged((state) => {
@@ -57,20 +62,8 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (showSettings) {
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      Animated.timing(slideAnim, {
-        toValue: -100,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [showSettings]);
+    applyFilter();
+  }, [tasks, currentFilter]);
 
   const loadTasks = async () => {
     try {
@@ -83,6 +76,52 @@ export default function Home() {
       console.error('Error loading tasks:', error);
       Alert.alert('Error', 'Failed to load tasks. Please try again.');
     }
+  };
+
+  const applyFilter = async () => {
+    let filtered = [...tasks];
+
+    switch (currentFilter) {
+      case 'all':
+        // No filtering needed
+        break;
+      case 'pending':
+        filtered = tasks.filter(task => Number(task.completed) === 0);
+        break;
+      case 'completed':
+        filtered = tasks.filter(task => Number(task.completed) > 0);
+        break;
+      case 'today':
+        const today = new Date().toDateString();
+        filtered = tasks.filter(task => {
+          if (!task.deadline) return false;
+          return new Date(task.deadline).toDateString() === today;
+        });
+        break;
+      case 'overdue':
+        const now = new Date();
+        filtered = tasks.filter(task => {
+          if (!task.deadline || Number(task.completed) > 0) return false;
+          return new Date(task.deadline) < now;
+        });
+        break;
+      default:
+        if (typeof currentFilter === 'object' && currentFilter.type === 'tag') {
+          try {
+            // Get tasks with this tag
+            const taskTags = await blink.db.taskTags.list({
+              where: { tag_id: currentFilter.tagId }
+            });
+            const taskIds = taskTags.map(tt => tt.task_id);
+            filtered = tasks.filter(task => taskIds.includes(task.id));
+          } catch (error) {
+            console.error('Error filtering by tag:', error);
+          }
+        }
+        break;
+    }
+
+    setFilteredTasks(filtered);
   };
 
   const onRefresh = async () => {
@@ -137,6 +176,25 @@ export default function Home() {
     createTask(text);
   };
 
+  const handleFilterChange = (filter: FilterType) => {
+    setCurrentFilter(filter);
+  };
+
+  const getFilterTitle = () => {
+    switch (currentFilter) {
+      case 'all': return 'All Tasks';
+      case 'pending': return 'Pending Tasks';
+      case 'completed': return 'Completed Tasks';
+      case 'today': return 'Due Today';
+      case 'overdue': return 'Overdue Tasks';
+      default:
+        if (typeof currentFilter === 'object' && currentFilter.type === 'tag') {
+          return `#${currentFilter.tagName}`;
+        }
+        return 'Tasks';
+    }
+  };
+
   const styles = StyleSheet.create({
     container: {
       flex: 1,
@@ -184,74 +242,75 @@ export default function Home() {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingHorizontal: 24,
+      paddingHorizontal: 20,
       paddingTop: 16,
       paddingBottom: 8,
+      backgroundColor: colors.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
     },
     headerLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+    },
+    menuButton: {
+      padding: 8,
+      marginRight: 12,
+      borderRadius: 8,
+      backgroundColor: colors.background,
+    },
+    headerContent: {
       flex: 1,
     },
     headerTitle: {
-      fontSize: 28,
+      fontSize: 24,
       fontWeight: 'bold',
       color: colors.text,
     },
     headerSubtitle: {
       color: colors.textSecondary,
-      marginTop: 4,
-      fontSize: 16,
+      marginTop: 2,
+      fontSize: 14,
     },
-    settingsButton: {
+    headerActions: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    headerButton: {
       padding: 8,
-      borderRadius: 12,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    settingsPanel: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      backgroundColor: colors.surface,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-      paddingHorizontal: 24,
-      paddingVertical: 16,
-      zIndex: 1000,
-      shadowColor: colors.text,
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 8,
-      elevation: 5,
-    },
-    settingsPanelTitle: {
-      fontSize: 18,
-      fontWeight: '600',
-      color: colors.text,
-      marginBottom: 16,
+      borderRadius: 8,
+      backgroundColor: colors.background,
     },
     successBanner: {
-      marginHorizontal: 24,
-      marginBottom: 16,
-      backgroundColor: colors.success + '20',
+      marginHorizontal: 20,
+      marginVertical: 12,
+      backgroundColor: colors.primary + '20',
       borderWidth: 1,
-      borderColor: colors.success + '40',
-      borderRadius: 16,
-      padding: 16,
+      borderColor: colors.primary + '40',
+      borderRadius: 12,
+      padding: 12,
     },
     successContent: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'center',
     },
     successText: {
-      color: colors.success,
+      color: colors.primary,
       marginLeft: 8,
       fontWeight: '600',
     },
     scrollView: {
       flex: 1,
-      paddingHorizontal: 24,
+    },
+    statsContainer: {
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+    },
+    tasksContainer: {
+      paddingHorizontal: 20,
+      paddingBottom: 24,
     },
     emptyContainer: {
       flex: 1,
@@ -274,20 +333,15 @@ export default function Home() {
       fontSize: 16,
       opacity: 0.8,
     },
-    tasksContainer: {
-      paddingBottom: 24,
-    },
-    taskSection: {
-      marginBottom: 32,
-    },
     sectionTitle: {
-      fontSize: 20,
+      fontSize: 18,
       fontWeight: '700',
       color: colors.text,
       marginBottom: 16,
+      marginTop: 8,
     },
     inputContainer: {
-      paddingHorizontal: 24,
+      paddingHorizontal: 20,
       paddingBottom: 32,
       paddingTop: 16,
       backgroundColor: colors.surface,
@@ -333,53 +387,59 @@ export default function Home() {
     <SafeAreaView style={styles.container}>
       <StatusBar style={isDark ? "light" : "dark"} />
       
-      {/* Settings Panel */}
-      {showSettings && (
-        <Animated.View 
-          style={[
-            styles.settingsPanel,
-            {
-              transform: [{ translateY: slideAnim }]
-            }
-          ]}
-        >
-          <Text style={styles.settingsPanelTitle}>Settings</Text>
-          <ThemeToggle />
-        </Animated.View>
-      )}
-      
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.headerTitle}>Voice Todo</Text>
-          <Text style={styles.headerSubtitle}>
-            Hey {user.email?.split('@')[0]}! {pendingTasks.length} tasks pending
-          </Text>
+          <TouchableOpacity
+            onPress={() => setShowSidebar(true)}
+            style={styles.menuButton}
+          >
+            <Menu size={24} color={colors.text} />
+          </TouchableOpacity>
+          
+          <View style={styles.headerContent}>
+            <Text style={styles.headerTitle}>{getFilterTitle()}</Text>
+            <Text style={styles.headerSubtitle}>
+              {filteredTasks.length} tasks • {pendingTasks.length} pending
+            </Text>
+          </View>
         </View>
-        <TouchableOpacity
-          onPress={() => setShowSettings(!showSettings)}
-          style={styles.settingsButton}
-        >
-          <Settings size={24} color={colors.text} />
-        </TouchableOpacity>
+
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={() => setShowTagManager(true)}
+            style={styles.headerButton}
+          >
+            <TagIcon size={20} color={colors.text} />
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            onPress={() => setShowSettings(true)}
+            style={styles.headerButton}
+          >
+            <Settings size={20} color={colors.text} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Task Creation Success Animation */}
       {isCreatingTask && (
         <Animated.View style={[styles.successBanner, { opacity: fadeAnim }]}>
           <View style={styles.successContent}>
-            <CheckCircle size={20} color={colors.success} />
+            <CheckCircle size={16} color={colors.primary} />
             <Text style={styles.successText}>Task created successfully!</Text>
           </View>
         </Animated.View>
       )}
 
       {/* Task Statistics */}
-      <TaskStats 
-        totalTasks={tasks.length}
-        completedTasks={completedTasks.length}
-        pendingTasks={pendingTasks.length}
-      />
+      <View style={styles.statsContainer}>
+        <TaskStats 
+          totalTasks={tasks.length}
+          completedTasks={completedTasks.length}
+          pendingTasks={pendingTasks.length}
+        />
+      </View>
 
       {/* Tasks List */}
       <ScrollView
@@ -394,47 +454,31 @@ export default function Home() {
         }
         showsVerticalScrollIndicator={false}
       >
-        {tasks.length === 0 ? (
+        {filteredTasks.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Plus size={64} color={colors.textSecondary} />
-            <Text style={styles.emptyTitle}>No tasks yet</Text>
+            <Text style={styles.emptyTitle}>
+              {currentFilter === 'all' ? 'No tasks yet' : 'No tasks found'}
+            </Text>
             <Text style={styles.emptySubtitle}>
-              Use voice or text input below to create your first task
+              {currentFilter === 'all' 
+                ? 'Use voice or text input below to create your first task'
+                : 'Try adjusting your filter or create a new task'
+              }
             </Text>
           </View>
         ) : (
           <View style={styles.tasksContainer}>
-            {/* Pending Tasks */}
-            {pendingTasks.length > 0 && (
-              <View style={styles.taskSection}>
-                <Text style={styles.sectionTitle}>
-                  To Do ({pendingTasks.length})
-                </Text>
-                {pendingTasks.map((task) => (
-                  <TaskItem
-                    key={task.id}
-                    task={task}
-                    onUpdate={loadTasks}
-                  />
-                ))}
-              </View>
-            )}
-
-            {/* Completed Tasks */}
-            {completedTasks.length > 0 && (
-              <View style={styles.taskSection}>
-                <Text style={styles.sectionTitle}>
-                  Completed ({completedTasks.length})
-                </Text>
-                {completedTasks.map((task) => (
-                  <TaskItem
-                    key={task.id}
-                    task={task}
-                    onUpdate={loadTasks}
-                  />
-                ))}
-              </View>
-            )}
+            <Text style={styles.sectionTitle}>
+              {getFilterTitle()} ({filteredTasks.length})
+            </Text>
+            {filteredTasks.map((task) => (
+              <TaskItem
+                key={task.id}
+                task={task}
+                onUpdate={loadTasks}
+              />
+            ))}
           </View>
         )}
       </ScrollView>
@@ -457,6 +501,27 @@ export default function Home() {
           />
         )}
       </View>
+
+      {/* Sidebar */}
+      <Sidebar
+        visible={showSidebar}
+        onClose={() => setShowSidebar(false)}
+        onNavigate={handleFilterChange}
+        currentFilter={currentFilter}
+      />
+
+      {/* Tag Manager */}
+      <TagManager
+        visible={showTagManager}
+        onClose={() => setShowTagManager(false)}
+        mode="manage"
+      />
+
+      {/* Settings Panel */}
+      <SettingsPanel
+        visible={showSettings}
+        onClose={() => setShowSettings(false)}
+      />
     </SafeAreaView>
   );
 }

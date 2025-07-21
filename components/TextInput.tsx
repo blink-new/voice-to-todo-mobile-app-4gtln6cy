@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, TextInput as RNTextInput, TouchableOpacity, StyleSheet, Animated } from 'react-native';
-import { Plus, Send } from 'lucide-react-native';
+import { Send, Sparkles } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 
 interface TextInputProps {
@@ -9,7 +9,7 @@ interface TextInputProps {
   disabled?: boolean;
 }
 
-export default function TextInput({ onSubmit, placeholder = "Add a new task...", disabled = false }: TextInputProps) {
+export default function TextInput({ onSubmit, placeholder = "Type a new task...", disabled = false }: TextInputProps) {
   const [text, setText] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const { colors } = useTheme();
@@ -39,19 +39,23 @@ export default function TextInput({ onSubmit, placeholder = "Add a new task...",
 
   const styles = StyleSheet.create({
     container: {
-      flexDirection: 'row',
-      alignItems: 'center',
       backgroundColor: colors.surface,
       borderRadius: 16,
       borderWidth: 2,
       borderColor: isFocused ? colors.primary : colors.border,
-      paddingHorizontal: 16,
-      paddingVertical: 4,
       shadowColor: colors.text,
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.1,
       shadowRadius: 4,
       elevation: 3,
+      overflow: 'hidden',
+    },
+    inputContainer: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      minHeight: 56,
     },
     textInput: {
       flex: 1,
@@ -59,6 +63,8 @@ export default function TextInput({ onSubmit, placeholder = "Add a new task...",
       color: colors.text,
       paddingVertical: 12,
       paddingRight: 12,
+      maxHeight: 120,
+      textAlignVertical: 'top',
     },
     submitButton: {
       width: 40,
@@ -67,40 +73,49 @@ export default function TextInput({ onSubmit, placeholder = "Add a new task...",
       backgroundColor: text.trim() ? colors.primary : colors.border,
       alignItems: 'center',
       justifyContent: 'center',
+      marginBottom: 4,
+    },
+    submitButtonDisabled: {
+      opacity: 0.5,
     },
   });
 
   return (
     <View style={styles.container}>
-      <RNTextInput
-        value={text}
-        onChangeText={setText}
-        onSubmitEditing={handleSubmit}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textSecondary}
-        style={styles.textInput}
-        multiline
-        maxLength={500}
-        editable={!disabled}
-        returnKeyType="send"
-        blurOnSubmit={false}
-      />
-      
-      <Animated.View style={{ transform: [{ scale: scaleAnimation }] }}>
-        <TouchableOpacity
-          onPress={handleSubmit}
-          disabled={!text.trim() || disabled}
-          style={styles.submitButton}
-        >
-          {text.trim() ? (
-            <Send size={20} color="white" />
-          ) : (
-            <Plus size={20} color={colors.textSecondary} />
-          )}
-        </TouchableOpacity>
-      </Animated.View>
+      <View style={styles.inputContainer}>
+        <RNTextInput
+          value={text}
+          onChangeText={setText}
+          onSubmitEditing={handleSubmit}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+          placeholder={placeholder}
+          placeholderTextColor={colors.textSecondary}
+          style={styles.textInput}
+          multiline
+          maxLength={500}
+          editable={!disabled}
+          returnKeyType="send"
+          blurOnSubmit={false}
+        />
+        
+        <Animated.View style={{ transform: [{ scale: scaleAnimation }] }}>
+          <TouchableOpacity
+            onPress={handleSubmit}
+            disabled={!text.trim() || disabled}
+            style={[
+              styles.submitButton,
+              (!text.trim() || disabled) && styles.submitButtonDisabled
+            ]}
+          >
+            {text.trim() ? (
+              <Send size={20} color="white" />
+            ) : (
+              <Sparkles size={20} color={colors.textSecondary} />
+            )}
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
     </View>
   );
 }
